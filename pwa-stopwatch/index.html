@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ストップウォッチ（PWA 対応）</title>
+  <meta name="theme-color" content="#ef6c00">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-180.png">
+  <style>
+    :root { --fg:#111; --muted:#666; --accent:#ef6c00; --blue:#1976d2; --ok:#2e7d32; --stop:#c62828; --bg:#fff; --line:#e5e7eb; }
+    @media (prefers-color-scheme: dark){
+      :root { --fg:#eee; --muted:#aaa; --bg:#111; --line:#2a2a2a; }
+    }
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP",sans-serif}
+    .wrap{padding:24px;display:grid;place-items:start}
+    .card{border:1px solid var(--line);border-radius:14px;padding:20px;max-width:560px;width:100%}
+    h1{margin:0 0 8px 0;font-size:20px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .label{color:var(--muted);font-size:14px;margin:16px 0 6px}
+    .time{font:700 48px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.5px}
+    .count{font:800 36px/1.2 sans-serif;color:var(--blue)}
+    .pill{padding:8px 12px;border-radius:8px;background:rgba(239,108,0,0.12);color:var(--accent);font-weight:700;border:0;cursor:pointer}
+    .presets{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .preset{padding:10px;border-radius:8px;background:rgba(239,108,0,0.12);color:var(--accent);font-weight:700;border:0;cursor:pointer}
+    .preset.active{background:var(--accent);color:#fff}
+    input[type="number"]{width:120px;padding:10px;border-radius:8px;border:1px solid var(--line);font-weight:700;background:var(--bg);color:var(--fg)}
+    .btn{border:0;border-radius:12px;padding:14px 20px;font-weight:800;color:#fff;cursor:pointer}
+    .btn.ok{background:var(--ok)}
+    .btn.stop{background:var(--stop)}
+    .btn.gray{background:#666}
+    .small{font-size:12px;color:var(--muted)}
+    .switch{display:flex;align-items:center;gap:8px;margin-top:6px}
+    .switch input{transform:scale(1.2)}
+    .hint{margin-top:10px;font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" role="application" aria-label="ストップウォッチ">
+    <h1>ストップウォッチ</h1>
+
+    <div class="label">経過時間</div>
+    <div id="time" class="time" aria-live="polite">00:00.00</div>
+
+    <div class="label">生産数</div>
+    <div id="count" class="count" aria-live="polite">0</div>
+
+    <div class="label">サイクルタイム</div>
+    <div class="row" style="margin-bottom:8px">
+      <input id="cycle" type="number" step="0.1" min="0.1" value="5.0" aria-label="サイクルタイム（秒）"> 秒
+      <button id="cycleBtn" class="pill" title="現在のサイクルタイム">
+        現在: <span id="cycleDisp">5.0</span> 秒
+      </button>
+    </div>
+    <div class="presets" aria-label="プリセット">
+      <button class="preset" data-v="1.0">1秒</button>
+      <button class="preset" data-v="2.0">2秒</button>
+      <button class="preset" data-v="3.0">3秒</button>
+      <button class="preset active" data-v="5.0">5秒</button>
+      <button class="preset" data-v="10.0">10秒</button>
+      <button class="preset" data-v="15.0">15秒</button>
+    </div>
+
+    <div class="label">設定</div>
+    <div class="switch">
+      <input type="checkbox" id="wakeLockChk">
+      <label for="wakeLockChk">画面スリープを防止（Wake Lock）</label>
+    </div>
+    <div id="wakeStatus" class="small">状態: 未使用</div>
+    <div class="hint">※対応ブラウザのみ有効。非対応端末では自動的に無効になります。</div>
+
+    <div class="row" style="margin-top:22px">
+      <button id="startStop" class="btn ok">スタート</button>
+      <button id="reset" class="btn gray">リセット</button>
+    </div>
+
+    <div class="hint" style="margin-top:12px">
+      PWA対応：オフラインでも利用可／ホーム画面から起動可。計測は <code>Date.now()</code> の差分で算出。
+    </div>
+  </div>
+</div>
+
+<script>
+  // --- Service Worker 登録 ---
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(console.error);
+    });
+  }
+
+  // --- ストップウォッチ本体（差分計算＋Wake Lock） ---
+  let running = false;
+  let startWall = 0;       // 計測開始の壁時計(ms, Date.now)
+  let elapsedAccum = 0;    // 停止中までの累積(ms)
+  let rafId = null;
+  let wakeLock = null;
+
+  const timeEl = document.getElementById('time');
+  const countEl = document.getElementById('count');
+  const startStopEl = document.getElementById('startStop');
+  const resetEl = document.getElementById('reset');
+  const cycleInput = document.getElementById('cycle');
+  const cycleDisp = document.getElementById('cycleDisp');
+  const cycleBtn = document.getElementById('cycleBtn');
+  const presetBtns = [...document.querySelectorAll('.preset')];
+  const wakeLockChk = document.getElementById('wakeLockChk');
+  const wakeStatus = document.getElementById('wakeStatus');
+
+  function fmtTime(ms) {
+    const total = Math.max(0, Math.floor(ms));
+    const m = Math.floor(total / 60000);
+    const s = Math.floor((total % 60000) / 1000);
+    const cs = Math.floor((total % 1000) / 10); // centiseconds
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+  }
+
+  function getElapsed() {
+    if (!running) return elapsedAccum;
+    return elapsedAccum + (Date.now() - startWall);
+  }
+
+  function productionCount(ms) {
+    const ct = parseFloat(cycleInput.value) || 0;
+    if (ct <= 0) return 0;
+    return Math.floor(ms / (ct * 1000));
+  }
+
+  function render() {
+    const ms = getElapsed();
+    timeEl.textContent = fmtTime(ms);
+    countEl.textContent = productionCount(ms);
+    cycleDisp.textContent = Number(cycleInput.value).toFixed(1);
+  }
+
+  function tick() {
+    render();
+    if (running) rafId = requestAnimationFrame(tick);
+  }
+
+  function start() {
+    if (running) return;
+    running = true;
+    startWall = Date.now();
+    startStopEl.textContent = 'ストップ';
+    startStopEl.classList.remove('ok'); startStopEl.classList.add('stop');
+    rafId = requestAnimationFrame(tick);
+    maybeEnableWakeLock();
+  }
+
+  function stop() {
+    if (!running) return;
+    running = false;
+    elapsedAccum = getElapsed();
+    cancelAnimationFrame(rafId);
+    startStopEl.textContent = 'スタート';
+    startStopEl.classList.remove('stop'); startStopEl.classList.add('ok');
+    maybeDisableWakeLock();
+    render();
+  }
+
+  function reset() {
+    stop();
+    elapsedAccum = 0;
+    render();
+  }
+
+  const canWakeLock = 'wakeLock' in (navigator || {});
+  async function maybeEnableWakeLock() {
+    if (!wakeLockChk.checked || !canWakeLock) {
+      wakeStatus.textContent = canWakeLock ? '状態: 未使用（オフ）' : '状態: 非対応';
+      return;
+    }
+    try {
+      if (!wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeStatus.textContent = '状態: 有効';
+        wakeLock.addEventListener('release', () => {
+          wakeStatus.textContent = '状態: 解除されました';
+          wakeLock = null;
+        });
+      }
+    } catch (e) {
+      wakeStatus.textContent = '状態: 取得失敗（権限/端末制限）';
+    }
+  }
+  async function maybeDisableWakeLock() {
+    if (wakeLock) {
+      try { await wakeLock.release(); } catch {}
+      wakeLock = null;
+      wakeStatus.textContent = '状態: 解除';
+    }
+  }
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && running) {
+      await maybeEnableWakeLock();
+    }
+  });
+
+  startStopEl.addEventListener('click', () => running ? stop() : start());
+  resetEl.addEventListener('click', reset);
+
+  cycleInput.addEventListener('input', () => {
+    const v = Number(cycleInput.value).toFixed(1);
+    presetBtns.forEach(b => b.classList.toggle('active', Number(b.dataset.v).toFixed(1) === v));
+    localStorage.setItem('cycleTime', v);
+    render();
+  });
+  cycleBtn.addEventListener('click', () => cycleInput.focus());
+  presetBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      presetBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      cycleInput.value = btn.dataset.v;
+      localStorage.setItem('cycleTime', Number(btn.dataset.v).toFixed(1));
+      render();
+    });
+  });
+  wakeLockChk.addEventListener('change', async () => {
+    localStorage.setItem('wakeLockPref', wakeLockChk.checked ? '1' : '0');
+    if (running) {
+      if (wakeLockChk.checked) await maybeEnableWakeLock();
+      else await maybeDisableWakeLock();
+    } else {
+      wakeStatus.textContent = canWakeLock
+        ? (wakeLockChk.checked ? '状態: 有効（次回スタート時に取得）' : '状態: 未使用（オフ）')
+        : '状態: 非対応';
+    }
+  });
+
+  (function init(){
+    const savedCt = localStorage.getItem('cycleTime');
+    if (savedCt) {
+      cycleInput.value = savedCt;
+      presetBtns.forEach(b => b.classList.toggle('active', Number(b.dataset.v).toFixed(1) === savedCt));
+    }
+    const wakePref = localStorage.getItem('wakeLockPref');
+    if (wakePref === '1') wakeLockChk.checked = true;
+    wakeStatus.textContent = canWakeLock
+      ? (wakeLockChk.checked ? '状態: 有効（待機中）' : '状態: 未使用（オフ）')
+      : '状態: 非対応';
+    render();
+  })();
+</script>
+</body>
+</html>
