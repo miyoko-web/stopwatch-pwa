@@ -174,7 +174,7 @@
     const count = productionCount(ms);
     timeEl.textContent = fmtTime(ms);
     countEl.textContent = count;
-    cycleDisp.textContent = Number(cycleInput.value).toFixed(1);
+    cycleDisp.textContent = Number(cycleInput.value).toFixed(3);
 
     // ビープ判定：生産数が1つ増えたタイミング
     if (running && beepChk.checked && audioCtx && count > lastCountForBeep) {
