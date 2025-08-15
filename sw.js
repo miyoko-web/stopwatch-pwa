@@ -1,5 +1,5 @@
 // Simple cache-first service worker for PWA stopwatch
-const CACHE_NAME = 'stopwatch-pwa-v2';
+const CACHE_NAME = 'stopwatch-pwa-v3';
 const ASSETS = [
   './',
   './index.html',
