@@ -36,7 +36,36 @@
     .range{width:180px}
     #cycleDisp{ color: var(--blue); font-weight:700; }
     #cycle{ color: #6b7280 !important;
-    -webkit-text-fill-color: #6b7280; }
+      -webkit-text-fill-color: #6b7280; }
+    /* ---- ダークモードでも沈まない“安全な灰色設計” ---- */
+    /* 入力欄の文字色（iOSは -webkit-text-fill-color が実色を握る） */
+    input[type="number"]{
+      color: var(--muted) !important;
+      -webkit-text-fill-color: var(--muted);
+      font-size: 16px;           /* iOSの勝手ズーム防止（任意） */
+    }
+    
+    /* ラベル・説明文は常に控えめグレーで */
+    .label,
+    .small,
+    .hint,
+    #wakeStatus,
+    label[for]{
+      color: var(--muted) !important;
+    }
+    
+    /* 見出しやボタンなど“本文色”は変数に寄せる（黒直指定の保険） */
+    h1,
+    .card,
+    .row,
+    .btn{
+      color: var(--muted);
+    }
+    
+    /* （任意）数値表示を青で固定したいときは有効化
+    .time{ color: var(--blue) !important; }
+    #cycleDisp{ color: var(--blue) !important; }
+    */
   </style>
 </head>
 <body>
