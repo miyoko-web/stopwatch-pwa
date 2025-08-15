@@ -13,12 +13,12 @@
       :root { --fg:#111; --muted:#666; --bg:#fff; --line:#e5e7eb; }
     }
     html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP",sans-serif}
-    .wrap{padding:24px;display:grid;place-items:start}
-    .card{border:1px solid var(--line);border-radius:14px;padding:20px;max-width:560px;width:100%}
+    .wrap{padding:24px;display:grid;place-items:start; box-sizing:border-box;}
+    .card{border:1px solid var(--line);border-radius:14px;padding:20px;max-width:560px;width:100%; box-sizing:border-box;}
     h1{margin:0 0 8px 0;font-size:20px}
     .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
     .label{color:var(--muted);font-size:14px;margin:16px 0 6px}
-    .time{font:700 48px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.5px}
+    .time{font:700 48px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.5px; color:var(--blue);} /* 青に固定 */
     .count{font:800 36px/1.2 sans-serif;color:var(--blue)}
     .pill{padding:8px 12px;border-radius:8px;background:rgba(239,108,0,0.12);color:var(--accent);font-weight:700;border:0;cursor:pointer}
     .presets{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -34,11 +34,7 @@
     .switch input{transform:scale(1.2)}
     .hint{margin-top:10px;font-size:12px;color:var(--muted)}
     .range{width:180px}
-    .wrap, .card {
-    padding-left: 16px;
-    padding-right: 16px;
-    box-sizing: border-box;
-    }
+    #cycleDisp{ color: var(--blue); font-weight:700; } /* C/Tも青 */
   </style>
 </head>
 <body>
@@ -54,18 +50,18 @@
 
     <div class="label">サイクルタイム</div>
     <div class="row" style="margin-bottom:8px">
-      <input id="cycle" type="number" step="0.1" min="0.1" value="5.0" aria-label="サイクルタイム（秒）"> 秒
+      <input id="cycle" type="number" step="0.01" min="0.01" value="5.00" aria-label="サイクルタイム（秒）"> 秒
       <button id="cycleBtn" class="pill" title="現在のサイクルタイム">
-        C/T: <span id="cycleDisp">5.0</span> 秒
+        C/T: <span id="cycleDisp">5.00</span> 秒
       </button>
     </div>
     <div class="presets" aria-label="プリセット">
-      <button class="preset" data-v="1.0">1秒</button>
-      <button class="preset" data-v="2.0">2秒</button>
-      <button class="preset" data-v="3.0">3秒</button>
-      <button class="preset active" data-v="5.0">5秒</button>
-      <button class="preset" data-v="10.0">10秒</button>
-      <button class="preset" data-v="15.0">15秒</button>
+      <button class="preset" data-v="1.00">1秒</button>
+      <button class="preset" data-v="2.00">2秒</button>
+      <button class="preset" data-v="3.00">3秒</button>
+      <button class="preset active" data-v="5.00">5秒</button>
+      <button class="preset" data-v="10.00">10秒</button>
+      <button class="preset" data-v="15.00">15秒</button>
     </div>
 
     <div class="label">設定</div>
@@ -81,7 +77,7 @@
     </div>
     <div class="row" style="margin-top:4px">
       <span class="small">音量</span>
-      <input id="beepVol" class="range" type="range" min="0" max="1" step="0.01" value="0.4">
+      <input id="beepVol" class="range" type="range" min="0" max="1" step="0.01" value="0.40">
       <span id="volDisp" class="small">40%</span>
     </div>
 
@@ -132,8 +128,8 @@
       const now = ctx.currentTime;
       const vol = Math.max(0.0001, Number(beepVol.value));
       gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(vol, now + 0.01);              // 立ち上がり
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs/1000);// 減衰
+      gain.gain.exponentialRampToValueAtTime(vol, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs/1000);
 
       osc.connect(gain).connect(ctx.destination);
       osc.start(now);
@@ -179,7 +175,7 @@
     const count = productionCount(ms);
     timeEl.textContent = fmtTime(ms);
     countEl.textContent = count;
-    cycleDisp.textContent = Number(cycleInput.value).toFixed(2);
+    cycleDisp.textContent = Number(cycleInput.value).toFixed(2); // 2桁表示
 
     // ビープ判定：生産数が1つ増えたタイミング
     if (running && beepChk.checked && audioCtx && count > lastCountForBeep) {
@@ -199,14 +195,13 @@
     ensureAudioContext(); // ユーザー操作時に初期化（iOS対策）
     running = true;
     startWall = Date.now();
-    // 直前のカウントからスタート（開始直後に誤ビープしないように）
-    lastCountForBeep = productionCount(elapsedAccum);
+    lastCountForBeep = productionCount(elapsedAccum); // 誤ビープ防止
     startStopEl.textContent = 'ストップ';
     startStopEl.classList.remove('ok'); startStopEl.classList.add('stop');
     rafId = requestAnimationFrame(tick);
     maybeEnableWakeLock();
   }
-  function stop() {
+  function stop() { // ← 一時停止：値は保持
     if (!running) return;
     running = false;
     elapsedAccum = getElapsed();
@@ -216,7 +211,7 @@
     maybeDisableWakeLock();
     render();
   }
-  function reset() {
+  function reset() { // ← ゼロクリア
     stop();
     elapsedAccum = 0;
     lastCountForBeep = 0;
@@ -249,8 +244,8 @@
   resetEl.addEventListener('click', reset);
 
   cycleInput.addEventListener('input', () => {
-    const v = Number(cycleInput.value).toFixed(1);
-    presetBtns.forEach(b => b.classList.toggle('active', Number(b.dataset.v).toFixed(1) === v));
+    const v = Number(cycleInput.value).toFixed(2); // 2桁で保存
+    presetBtns.forEach(b => b.classList.toggle('active', Number(b.dataset.v).toFixed(2) === v));
     localStorage.setItem('cycleTime', v);
     render();
   });
@@ -260,7 +255,7 @@
       presetBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       cycleInput.value = btn.dataset.v;
-      localStorage.setItem('cycleTime', Number(btn.dataset.v).toFixed(1));
+      localStorage.setItem('cycleTime', Number(btn.dataset.v).toFixed(2)); // 2桁で保存
       render();
     });
   });
@@ -271,7 +266,7 @@
   });
   beepChk.addEventListener('change', () => {
     localStorage.setItem('beepPref', beepChk.checked ? '1' : '0');
-    if (beepChk.checked) ensureAudioContext(); // ユーザー操作として初期化
+    if (beepChk.checked) ensureAudioContext();
   });
   beepVol.addEventListener('input', () => {
     localStorage.setItem('beepVol', beepVol.value);
@@ -283,15 +278,13 @@
     const savedCt = localStorage.getItem('cycleTime');
     if (savedCt) {
       cycleInput.value = savedCt;
-      presetBtns.forEach(b => b.classList.toggle('active', Number(b.dataset.v).toFixed(1) === savedCt));
+      presetBtns.forEach(b => b.classList.toggle('active', Number(b.dataset.v).toFixed(2) === savedCt));
     }
     const wakePref = localStorage.getItem('wakeLockPref'); if (wakePref === '1') wakeLockChk.checked = true;
     const beepPref = localStorage.getItem('beepPref'); if (beepPref === '1') beepChk.checked = true;
     const savedVol = localStorage.getItem('beepVol'); if (savedVol) beepVol.value = savedVol;
     volDisp.textContent = `${Math.round(beepVol.value*100)}%`;
-    // 画面タップでもAudioContext解禁できるようリスナを一度だけ付与
     addEventListener('pointerdown', () => { if (!audioCtx && beepChk.checked) ensureAudioContext(); }, { once:true });
-    // Wake Lock表示
     wakeStatus.textContent = canWakeLock ? (wakeLockChk.checked ? '状態: 有効（待機中）' : '状態: 未使用（オフ）') : '状態: 非対応';
     render();
   })();
